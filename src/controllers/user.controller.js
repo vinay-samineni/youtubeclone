@@ -176,7 +176,7 @@ const refreshAccessToken = asyncHandler(async(req,res)=>{
             process.env.REFRESH_TOKEN_SECRET
         )
     
-        const user = await user.findById(decodedToken?._id)
+        const user = await User.findById(decodedToken?._id)
         if(!user)
             {
                 throw new ApiError(401,"Invalid RefreshToken") 
@@ -303,7 +303,7 @@ const updateUserCoverImage = asyncHandler(async(req,res)=>{
     .json(new ApiResponse(200,user,"coverImage updated successfully"))
 })
 
-const getUSerChannelProfile = asyncHandler(async(req,res)=>{
+const getUserChannelProfile = asyncHandler(async(req,res)=>{
     const {userName} = req.params
     if(!userName?.trim())
     {
@@ -432,7 +432,7 @@ export {
     updateAccountDetails,
     updateUserAvatar,
     updateUserCoverImage,
-    getUSerChannelProfile,
+    getUserChannelProfile,
     getWatchHistory
 
 }
