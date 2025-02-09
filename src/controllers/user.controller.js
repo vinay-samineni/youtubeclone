@@ -5,6 +5,11 @@ import {User} from "../models/user.models.js";
 import {uploadOnCloudinary} from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
+import dotenv from "dotenv"
+import fs from "fs"
+dotenv.config({
+    path: './.env'
+})
 
 
 const generateAccessAndRefreshToken = async(userId)=>{
@@ -23,74 +28,53 @@ const generateAccessAndRefreshToken = async(userId)=>{
     }
 }
 
-const registerUser = asyncHandler(async(req,res)=>
-{
-    //get user details from frontend
-    //validation -notempty
-    //check if user already exists
-    //check images
-    //check avatars
-    //upload them to cloudinary
-    //remove password and refresh token from response
-    //check for user creation
-    //return res
-    const {fullName,email,userName,password} = req.body
-    console.log(fullName)
+const registerUser = asyncHandler(async (req, res) => {
+    const { fullName, email, userName, password } = req.body;
 
-    if([fullName,email,userName,password].some((field)=>field.trim() === ""))
-    {
-        throw new ApiError(400 , "all fields are required")
+    if ([fullName, email, userName, password].some((field) => !field?.trim())) {
+        throw new ApiError(400, "All fields are required");
     }
 
     const existedUser = await User.findOne({
-        $or: [{userName},{email}]
-    })
-    if(existedUser)
-    {
-        throw new ApiError(409,"user already exists");
+        $or: [{ userName }, { email }]
+    });
+    if (existedUser) {
+        throw new ApiError(409, "User already exists");
     }
 
-    const avatarLocalPath = req.files?.avatar[0]?.path;
-    //const coverImageLocalPath = req.files?.coverImage[0]?.path;
-    let coverImageLocalPath;
-    if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length >0){
-        coverImageLocalPath = req.files.coverImage[0].path;
+    const avatarLocalPath = req.files?.avatar?.[0]?.path; // Fix: Safe access
+    let coverImageLocalPath = req.files?.coverImage?.[0]?.path; // Fix: Safe access
+
+    if (!avatarLocalPath) {
+        throw new ApiError(400, "Avatar is required");
     }
+    console.log("Avatar Path:", avatarLocalPath);
+    console.log("Cover Image Path:", coverImageLocalPath);
 
 
-    if(!avatarLocalPath){
-        throw new ApiError(400,"avatar is requried");
-    }
+    const avatar = await uploadOnCloudinary(avatarLocalPath);
+    const coverImage = coverImageLocalPath ? await uploadOnCloudinary(coverImageLocalPath) : null;
 
-    const avatar = await uploadOnCloudinary(avatarLocalPath)
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
-
-    if(!avatar){
-        throw new ApiError(400,"avatar is requried");
+    if (!avatar) {
+        throw new ApiError(400, "Avatar upload failed");
     }
 
     const user = await User.create({
         fullName,
-        avatar : avatar.url,
-        coverImage : coverImage?.url || "",
+        avatar: avatar.url,
+        coverImage: coverImage?.url || "",
         email,
         password,
-        userName : userName.toLowerCase()
-    })
+        userName: userName.toLowerCase()
+    });
 
-    const createdUser = await User.findById(user._id).select(
-        "-password -refreshToken"
-    )
-    if(!createdUser)
-    {
-        throw new ApiError(500,"something went wrong while creating user.");
+    const createdUser = await User.findById(user._id).select("-password -refreshToken");
+    if (!createdUser) {
+        throw new ApiError(500, "Something went wrong while creating user.");
     }
 
-    return res.status(201).json(
-        new ApiResponse(200,createdUser,"user registered succesfully.")
-    )
-
-})
+    return res.status(201).json(new ApiResponse(201, createdUser, "User registered successfully."));
+});
 
 const loginUser = asyncHandler(async(req,res)=>{
     //get username or email
@@ -100,7 +84,6 @@ const loginUser = asyncHandler(async(req,res)=>{
     //generate access token and refresh token
     //send cookies
     const {userName,email,password} = req.body
-    console.log(req.body)
     if(!req.body.userName && !req.body.email)
     {
         throw new ApiError(400,"userName or email is required")
@@ -250,10 +233,12 @@ const updateUserAvatar = asyncHandler(async (req, res, next) => {
     }
 
     const avatarLocalPath = req.file.path;
-    
+    console.log("Avatar local path:", avatarLocalPath);
+
     let avatar;
     try {
         avatar = await uploadOnCloudinary(avatarLocalPath);
+        console.log("Cloudinary Response:", avatar);
         if (!avatar?.url) {
             return next(new ApiError(400, "Error while uploading avatar"));
         }
@@ -263,17 +248,21 @@ const updateUserAvatar = asyncHandler(async (req, res, next) => {
 
     try {
         // Update user's avatar in the database
+        console.log("Updating user with ID:", req.user?._id);
         const user = await User.findByIdAndUpdate(
             req.user?._id,
             { $set: { avatar: avatar.url } },
             { new: true }
         ).select("-password");
 
+        console.log("Updated User:", user);
+
         // Remove local file after successful upload
         fs.unlinkSync(avatarLocalPath);
 
         return res.status(200).json(new ApiResponse(200, user, "Avatar updated successfully"));
     } catch (error) {
+        console.log("Error while updating avatar:", error);
         return next(new ApiError(500, "Failed to update avatar in database"));
     }
 });
